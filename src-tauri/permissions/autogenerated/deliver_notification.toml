@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-deliver-notification"
+description = "Enables the deliver_notification command without any pre-configured scope."
+commands.allow = ["deliver_notification"]
+
+[[permission]]
+identifier = "deny-deliver-notification"
+description = "Denies the deliver_notification command without any pre-configured scope."
+commands.deny = ["deliver_notification"]
