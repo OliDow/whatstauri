@@ -1,0 +1,65 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_call:
+    inputs:
+      tag:
+        description: Tag to release (e.g. v0.1.0)
+        required: true
+        type: string
+
+# Tightened (not read-all): as a reusable workflow, every permission requested
+# here must be granted by the calling job in tag-on-version.yml, which grants
+# only contents: write — all this workflow needs (checkout + release upload).
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # stable
+        with:
+          toolchain: stable
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: src-tauri
+
+      # tauri-action installs @tauri-apps/cli globally via npm when no package.json is present;
+      # npm is pre-installed on ubuntu runners so no setup-node step is required.
+      # includeUpdaterJson is disabled since this project has no updater configured.
+      - name: Build and publish release
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # action-v0.6.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: src-tauri
+          tagName: ${{ inputs.tag || github.ref_name }}
+          releaseName: "WhatsTauri ${{ inputs.tag || github.ref_name }}"
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: false
+          args: --bundles rpm,deb

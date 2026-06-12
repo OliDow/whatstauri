@@ -1,0 +1,1 @@
+{"whatsapp-remote":{"identifier":"whatsapp-remote","description":"The three bridge commands web.whatsapp.com may invoke. Nothing else.","remote":{"urls":["https://web.whatsapp.com"]},"local":false,"windows":["main"],"permissions":["allow-deliver-notification","allow-report-title","allow-debug-log"]}}

@@ -1,0 +1,69 @@
+# Tags pushed with GITHUB_TOKEN don't trigger push-tag workflows, so the release workflow is invoked directly via workflow_call.
+name: tag-on-version
+
+on:
+  push:
+    branches: [main]
+
+permissions: read-all
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tagged: ${{ steps.tag.outputs.tagged }}
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: Wait for CI to pass on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 60); do
+            CONCLUSION=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&event=push" \
+              --jq '[.workflow_runs[] | select(.name == "ci")][0].conclusion // "pending"')
+            case "$CONCLUSION" in
+              success) echo "ci passed"; exit 0 ;;
+              failure|cancelled|timed_out) echo "ci concluded: $CONCLUSION — not tagging"; exit 1 ;;
+              *) echo "waiting for ci ($CONCLUSION)…"; sleep 20 ;;
+            esac
+          done
+          echo "timed out waiting for ci"; exit 1
+        shell: bash
+
+      - name: Tag if version is new
+        id: tag
+        run: |
+          VERSION=$(jq -r .version src-tauri/tauri.conf.json)
+          TAG="v$VERSION"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "$TAG already exists — nothing to do"
+            echo "tagged=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+          echo "tagged=true" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: tag
+    if: needs.tag.outputs.tagged == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}

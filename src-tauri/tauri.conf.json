@@ -1,0 +1,34 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "WhatsTauri",
+  "version": "0.1.0",
+  "identifier": "com.shatteredsun.whatstauri",
+  "build": {
+    "frontendDist": "./dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["rpm", "deb", "appimage"],
+    "category": "SocialNetworking",
+    "shortDescription": "Lightweight WhatsApp Web wrapper (unofficial)",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png"
+    ],
+    "linux": {
+      "rpm": {
+        "depends": ["webkit2gtk4.1 >= 2.46.1"],
+        "recommends": ["gstreamer1-plugins-good", "gstreamer1-plugin-openh264"]
+      }
+    }
+  }
+}
