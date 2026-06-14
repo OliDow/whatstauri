@@ -27,11 +27,25 @@
     }
   }, 100);
 
+  // Smart local timestamp: "14:32" today, else "Jun 13 14:32".
+  function fmtTs(d) {
+    var now = new Date();
+    var sameDay =
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate();
+    var time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (sameDay) return time;
+    var date = d.toLocaleDateString([], { month: "short", day: "numeric" });
+    return date + " " + time;
+  }
+
   function FakeNotification(title, opts) {
     opts = opts || {};
     send("deliver_notification", {
       title: String(title || ""),
       body: String(opts.body || ""),
+      ts: fmtTs(new Date()),
     });
   }
   FakeNotification.permission = "granted";

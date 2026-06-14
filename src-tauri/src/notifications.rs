@@ -58,7 +58,8 @@ pub(crate) fn notify(summary: &str, body: &str) {
 /// Web Notification → native notification with click-to-focus (spec §3.2).
 /// notify-rust's D-Bus "default" action fires when the notification body is clicked.
 #[tauri::command]
-pub fn deliver_notification(app: AppHandle, title: String, body: String) {
+pub fn deliver_notification(app: AppHandle, title: String, body: String, ts: String) {
+    crate::tray::set_last_message(&app, &title, &ts, &body);
     std::thread::spawn(move || {
         let shown = notify_rust::Notification::new()
             .summary(&title)
