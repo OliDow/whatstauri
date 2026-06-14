@@ -1,11 +1,20 @@
-use tauri::menu::{Menu, MenuItem};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager};
 
 /// Menu items we update after creation. The Show/Hide label mirrors the unread
-/// count because tray-icon's GTK backend makes tooltips a no-op on Linux.
+/// count because tray-icon's GTK backend makes tooltips a no-op on Linux. The
+/// last-message rows are detached at first and inserted at the top on the first
+/// incoming message (MenuItem has no set_visible in tauri 2.11).
 pub struct TrayMenuItems {
     pub show_hide: MenuItem<tauri::Wry>,
+    pub menu: Menu<tauri::Wry>,
+    pub last_from: MenuItem<tauri::Wry>,
+    pub last_body: MenuItem<tauri::Wry>,
+    pub separator: PredefinedMenuItem<tauri::Wry>,
+    pub last_inserted: AtomicBool,
 }
 
 fn show_hide_label(count: u32) -> String {
@@ -29,6 +38,11 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show_hide, &reload, &clear, &quit])?;
 
+    // Detached now; inserted at the top of `menu` on the first message.
+    let last_from = MenuItem::with_id(app, "last_from", "", false, None::<&str>)?;
+    let last_body = MenuItem::with_id(app, "last_body", "", false, None::<&str>)?;
+    let separator = PredefinedMenuItem::separator(app)?;
+
     TrayIconBuilder::with_id("main")
         .icon(app.default_window_icon().expect("bundled icon").clone())
         .menu(&menu)
@@ -42,7 +56,14 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         })
         .build(app)?;
 
-    app.manage(TrayMenuItems { show_hide });
+    app.manage(TrayMenuItems {
+        show_hide,
+        menu,
+        last_from,
+        last_body,
+        separator,
+        last_inserted: AtomicBool::new(false),
+    });
     Ok(())
 }
 
@@ -60,6 +81,38 @@ pub fn set_unread(app: &AppHandle, count: u32) {
         };
         let _ = tray.set_tooltip(Some(tip));
     }
+
+    // Bake the count into the tray icon. set_icon touches GTK, so it must run on
+    // the main thread; run_on_main_thread is correct whether or not the caller
+    // already is. A failed render/swap is cosmetic — never break count handling.
+    let (rgba, w, h) = crate::badge::render(count);
+    let app = app.clone();
+    let _ = app.clone().run_on_main_thread(move || {
+        if let Some(tray) = app.tray_by_id("main") {
+            let _ = tray.set_icon(Some(tauri::image::Image::new_owned(rgba, w, h)));
+        }
+    });
+}
+
+/// Update the tray's "last message" rows. On the first call the rows + a
+/// separator are inserted at the top of the menu (MenuItem has no set_visible).
+/// GTK menu mutation must run on the main thread; a failure here is cosmetic and
+/// must never break notification delivery.
+pub fn set_last_message(app: &AppHandle, from: &str, ts: &str, message: &str) {
+    let from_label = crate::last_message::from_label(from, ts);
+    let body_label = crate::last_message::body_label(message);
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(items) = handle.try_state::<TrayMenuItems>() {
+            let _ = items.last_from.set_text(&from_label);
+            let _ = items.last_body.set_text(&body_label);
+            if !items.last_inserted.swap(true, Ordering::AcqRel) {
+                let _ = items.menu.insert(&items.last_from, 0);
+                let _ = items.menu.insert(&items.last_body, 1);
+                let _ = items.menu.insert(&items.separator, 2);
+            }
+        }
+    });
 }
 
 fn toggle_main(app: &AppHandle) {

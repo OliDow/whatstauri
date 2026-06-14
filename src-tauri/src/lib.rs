@@ -1,4 +1,6 @@
+mod badge;
 mod config;
+mod last_message;
 mod links;
 mod notifications;
 mod tray;
